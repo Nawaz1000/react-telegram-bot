@@ -1,0 +1,49 @@
+substitutions:
+  _STATUS: ""
+  _TRIGGER_NAME: ""
+  _REPO_NAME: ""
+  _LOG_URL: ""
+  _STATUS_DETAIL: ""
+  _TELEGRAM_BOT_TOKEN: ""
+  _TELEGRAM_CHAT_ID: ""
+
+steps:
+  # Step 1: Dockerfile se container build aur run karo for testing
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        docker run --rm $(docker build -q .) || exit 1
+    id: 'test-container'
+
+  # Step 2: Telegram notification bhejo
+  - name: 'gcr.io/cloud-builders/curl'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        STATUS="${_STATUS}"
+        TRIGGER_NAME="${_TRIGGER_NAME}"
+        REPO_NAME="${_REPO_NAME}"
+        LOG_URL="${_LOG_URL}"
+        STATUS_DETAIL="${_STATUS_DETAIL}"
+
+        if [[ "$STATUS" == "SUCCESS" || "$STATUS" == "FAILURE" ]]; then
+          MESSAGE="$REPO_NAME ka trigger '$TRIGGER_NAME' hua hai\nAur status: $STATUS"
+          if [[ "$STATUS" == "FAILURE" ]]; then
+            MESSAGE="$MESSAGE\nError Details: $STATUS_DETAIL\nLog URL: $LOG_URL"
+          fi
+
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\": \"${_TELEGRAM_CHAT_ID}\", \"text\": \"${MESSAGE}\"}" \
+            "https://api.telegram.org/bot${_TELEGRAM_BOT_TOKEN}/sendMessage"
+        fi
+    env:
+      - 'TELEGRAM_BOT_TOKEN=${_TELEGRAM_BOT_TOKEN}'
+      - 'TELEGRAM_CHAT_ID=${_TELEGRAM_CHAT_ID}'
+    id: 'notify'
+    waitFor: ['test-container']
+
+timeout: 600s
